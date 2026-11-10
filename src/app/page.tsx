@@ -179,7 +179,7 @@ export default async function WriteUp() {
               Fig. {5} is the server&apos;s own measurement. The app times each POST with performance.now() and returns it in the Server-Timing header: db is the posting database transaction, app is the whole handler. It leaves out what happens before the handler starts, such as a function cold start and platform routing.
             </p>
             <p>
-              Fig. {6} is what the client saw. It includes the network round trip from the test machine in South Africa to the Vercel region in Virginia (iad1), so it measures that distance as much as the ledger, and no threshold applies to it. The live thresholds are zero failed requests, zero dropped iterations and a server-side p99 under 100 ms. Rates were raised until a run crossed a threshold, and the next rate was not tried. Each run created its own 200 accounts through the API.
+              Fig. {6} is what the client saw. It includes the network round trip from the test machine in South Africa to the Vercel region in Virginia (iad1), so it measures that distance as much as the ledger, and no threshold applies to it. The live thresholds are zero failed requests, zero dropped iterations and a server-side p99 under 100 ms. Each run created its own 200 accounts through the API. Two earlier attempts at 200 requests per second that failed for load-generator reasons are described in the environment note and are not in these figures.
             </p>
             {hasEnvironmentNote() ? (
               <p>

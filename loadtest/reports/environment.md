@@ -77,18 +77,20 @@ docker run --rm \
 
 ## Live
 
-Applies to `live-2026-11-10-25.json`. Run once, by `loadtest/run-live.sh`.
+Applies to `live-2026-11-10-25.json`, `-50.json`, `-100.json` and `-200.json`. Two further 200 req/s attempts that did not count are kept as `live-2026-11-10-200-attempt1.json` and `-attempt2.json`; see "Attempts that did not count".
 
 | | |
 |---|---|
-| Target | https://sablestack-ledger.vercel.app (Vercel deployment of `main`, commit a3cb3e4) |
-| App | Vercel Functions, Node, region `iad1`, app connected as `ledger_app` |
+| Target | https://sablestack-ledger.vercel.app, `main` at e20865c |
+| App | Vercel Functions, Node, region `iad1`, connected as `ledger_app` |
 | Database | Neon free tier, `us-east-1`, pooled connection (`-pooler` host, prepared statements off) |
 | Client | The laptop above (Apple M5 Pro, macOS 27.2), in South Africa, on the public internet; k6 v2.3.0 in Docker (`grafana/k6@sha256:3e4186aea62e11a45560bfc51e19eeafe82fc07ce069c78aff44b7ff893d9a5e`) |
-| Thresholds | failed rate 0, p99 under 250 ms, 0 dropped iterations (the p99 value was chosen before the run) |
-| Procedure | Setup: 200 accounts created through `POST /v1/accounts` (codes `lt-2026-11-10-live-25-NNNN`). Warm-up: 30 s at 10 req/s, tagged `endpoint:warmup` and excluded from every figure. Measurement: 60 s constant arrival rate. Rates were to rise from 25 until a run crossed a threshold. |
+| Thresholds | failed rate 0, dropped iterations 0, **server-side** p99 under 100 ms (`server_app`). Client-observed latency is exported and published but not a threshold. |
+| Procedure | Setup: 200 accounts created through `POST /v1/accounts` (codes `lt-<run id>-NNNN`). Warm-up: 30 s at 10 req/s, tagged `endpoint:warmup` and excluded from every figure. Measurement: 60 s at a constant arrival rate. Rates 25, 50, 100 and 200 req/s, one run each. |
+| Server time | The app times each request with `performance.now()` and returns `Server-Timing: db;dur=<ms>, app;dur=<ms>`. `db` is the posting database transaction; `app` is the whole handler. Neither includes anything before the handler starts (function cold start, platform routing) or the network. k6 records both as `server_db` and `server_app`. |
+| Client time | k6's `http_req_duration`. It includes the round trip from the client to `iad1`. A probe response carried `x-vercel-id: cpt1::iad1::...`, so requests enter at the Cape Town edge and run in `iad1`. |
 
-### Client network, measured before the run
+### Client network, measured before the first live run
 
 20 requests to `GET /v1/health` with curl, plus 10 ICMP pings, to `sablestack-ledger.vercel.app` (anycast address, so these reach the nearest Vercel edge, not `iad1`):
 
@@ -99,21 +101,30 @@ Applies to `live-2026-11-10-25.json`. Run once, by `loadtest/run-live.sh`.
 | TCP + TLS done (curl `time_appconnect`) | 90.2 ms | 75.6 ms | 203.3 ms |
 | First byte of `/v1/health`, new connection (curl `time_starttransfer`) | 397.6 ms | 372.8 ms | 502.7 ms |
 
-The TCP and ICMP figures are to the edge. The distance to `iad1` shows up in the application timings, not here.
+The TCP and ICMP figures are to the edge; the distance to `iad1` shows up in the application timings, not here.
 
 ### Outcome
 
 | Target req/s | Result |
 |---|---|
-| 25 | p99 threshold crossed (393.76 ms against 250 ms); 0 failed requests, 0 dropped iterations |
+| 25 | all thresholds met |
+| 50 | all thresholds met |
+| 100 | all thresholds met |
+| 200 | all thresholds met |
 
-- The run stopped there, as the procedure says, so 50, 100 and 200 req/s were not run. No rate met the threshold.
-- k6 reported a minimum request time of 281.61 ms for the measured requests, above the 250 ms p99 threshold. With 0 failures and 0 drops, the threshold looks unattainable from this client to `iad1`, regardless of load. That is an inference from the minimum; the split between network and application time was not measured.
-- `http_reqs` `rate` in the exported JSON is the request count divided by the whole test, including the 30-second warm-up (about 104 s in all), so it is 14.46 for 1,501 requests. It is not the rate during the 60-second window and is left out of the write-up for live runs.
+No failed requests and no dropped iterations in any of the four. The client-observed minimum was between 276 and 282 ms in every run while the server-side median was between 21 and 28 ms, so most of the client-observed time is the path between this client and `iad1`, not the ledger. Rates above 200 were not tried.
 
-### Integrity after the run
+### Attempts that did not count
 
-`GET /v1/integrity` on the live deployment, called by the k6 teardown and again by hand afterwards, returned `ok: true`, 0 unbalanced transactions, 0 transactions under two entries and 0 drifted accounts, with 250 accounts, 2,302 transactions and 4,604 entries (50 demo and 200 load-test accounts; 500 demo transactions plus 1,802 from the run, of which 1,501 were measured, so 301 were warm-up).
+- **200 req/s, attempt 1** (`live-2026-11-10-200-attempt1.json`): 41 dropped iterations out of 12,001 scheduled, 0 failed requests, server-side p99 68.66 ms as k6 printed it. k6 had 50 pre-allocated VUs; at about 300 ms per round trip 200 req/s needs roughly 100, and VUs created during the run delay iterations, which k6 counts as dropped. That is the load generator, not the server. Live mode now pre-allocates 0.8 x rate VUs (160 at 200 req/s).
+- **200 req/s, attempt 2** (`live-2026-11-10-200-attempt2.json`): 52.48% failed requests. The run id was the same as attempt 1, so the idempotency keys and account codes repeated and the ledger refused the repeated keys that carried different bodies. I did not log status codes; the cause is inferred from the ledger's transaction count rising by exactly the 5,703 successful posts (warm-up included) and from the failure disappearing once `run-live.sh` added a time suffix to the run id. It is not a ledger result.
+- **25 req/s on the earlier code** (commit c8df7ea): a first live run judged on client p99 under 250 ms crossed it with a client minimum of 281.61 ms. Superseded; its report was overwritten.
+
+Runs 25, 50 and 100 used run id `2026-11-10-live-<rps>` and 50 pre-allocated VUs (60 seen, including the warm-up's 10); the published 200 run used the larger pre-allocation and a run id with a time suffix. Nothing else differed between them.
+
+### Integrity after the runs
+
+The k6 teardown called `GET /v1/integrity` after every run, including the attempts, and each returned `ok: true`. A final call by hand after the last run returned `ok: true` with 0 unbalanced transactions, 0 transactions under two entries and 0 drifted accounts, over 1,050 accounts, 42,170 transactions and 84,340 entries.
 
 ### Commands
 
@@ -125,6 +136,6 @@ LEDGER_API_KEY=<write key> REPORT_DATE=2026-11-10 loadtest/run-live.sh 25 50 100
 
 ```sh
 docker run --rm -e LEDGER_API_KEY -e MODE=live -e RATE=<rps> -e BASE_URL=https://sablestack-ledger.vercel.app \
-  -e RUN_ID=2026-11-10-live-<rps> -e P99_MS=250 -v "$PWD/loadtest:/loadtest" \
+  -e RUN_ID=2026-11-10-live-<rps>-<hhmmss> -e P99_MS=100 -v "$PWD/loadtest:/loadtest" \
   grafana/k6 run --summary-export=/loadtest/reports/live-2026-11-10-<rps>.json /loadtest/post.js
 ```

@@ -28,7 +28,8 @@ const measureScenario = {
   rate: RATE,
   timeUnit: "1s",
   duration: DURATION,
-  preAllocatedVUs: Math.max(50, Math.ceil(RATE / 4)),
+  // ~300 ms live round trips need ~0.3 x rate VUs; VUs created mid-run delay iterations, which k6 counts as dropped.
+  preAllocatedVUs: LIVE ? Math.max(50, Math.ceil(RATE * 0.8)) : Math.max(50, Math.ceil(RATE / 4)),
   maxVUs: Math.max(200, RATE * (LIVE ? 4 : 2)),
 };
 

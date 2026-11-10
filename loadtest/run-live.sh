@@ -18,7 +18,7 @@ for rate in "$@"; do
   status=0
   docker run --rm \
     -e LEDGER_API_KEY -e MODE=live -e "RATE=$rate" -e "BASE_URL=$BASE_URL" \
-    -e "RUN_ID=$DATE-live-$rate" -e "P99_MS=${P99_MS:-100}" \
+    -e "RUN_ID=$DATE-live-$rate-$(date +%H%M%S)" -e "P99_MS=${P99_MS:-100}" \
     -v "$PWD/loadtest:/loadtest" \
     grafana/k6 run --summary-export="/loadtest/reports/live-$DATE-$rate.json" /loadtest/post.js || status=$?
   if [ "$status" -ne 0 ]; then
