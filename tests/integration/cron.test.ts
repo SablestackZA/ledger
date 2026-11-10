@@ -32,7 +32,10 @@ describe("GET /api/cron/reset", () => {
     expect(res.status).toBe(200);
     const check = await call(integrity, "/v1/integrity");
     expect(check.body).toMatchObject({ ok: true, accounts: 50, transactions: 500, entries: 1000 });
-    expect(first.body.data[0].description).toBe("Transfer 500");
+    const second = await call(listTransactions, "/v1/transactions", { query: "?limit=1" });
+    expect(second.body.data[0].description).toBe(first.body.data[0].description);
+    const amounts = (t: { entries: { amount_minor: string }[] }) => t.entries.map((e) => e.amount_minor);
+    expect(amounts(second.body.data[0])).toEqual(amounts(first.body.data[0]));
   }, 60_000);
 
   it("seeds accounts that behave like posted ones: the newest transaction reverses cleanly", async () => {

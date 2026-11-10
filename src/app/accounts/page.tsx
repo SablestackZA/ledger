@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DomainError } from "../../ledger/errors";
 import { getLedger } from "../../server/container";
 import { formatMinor, formatTime, normalSide, onNormalSide, shortId } from "../../surface/format";
+import { DataTable } from "../../surface/data-table";
 import { Empty, Footer, Nav } from "../../surface/ui";
 
 export const dynamic = "force-dynamic";
@@ -49,33 +50,18 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
           {accounts.data.length === 0 ? (
             <Empty title="No accounts yet" body="The demo ledger is reseeded every night. Check back after the next reset." action={{ href: "/", label: "Read the write-up" }} />
           ) : (
-            <div className="sbl-table-wrap">
-              <table className="sbl-table">
-                <caption className="sbl-label" style={{ display: "none" }}>Accounts</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Code</th>
-                    <th scope="col">Name</th>
-                    <th scope="col">Type</th>
-                    <th scope="col">Side</th>
-                    <th scope="col" className="sbl-num">Balance</th>
-                    <th scope="col">Currency</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accounts.data.map((a) => (
-                    <tr key={a.id}>
-                      <td className="sbl-mono">{a.code}</td>
-                      <td>{a.name}</td>
-                      <td className="sbl-soft">{a.type}</td>
-                      <td className="sbl-mono sbl-soft">{normalSide(a.type)}</td>
-                      <td className="sbl-num">{formatMinor(onNormalSide(a.type, a.balance_minor), a.currency)}</td>
-                      <td className="sbl-mono sbl-soft">{a.currency}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              rows={accounts.data}
+              rowKey={(a) => a.id}
+              columns={[
+                { header: "Code", kind: "mono", cell: (a) => a.code },
+                { header: "Name", cell: (a) => a.name },
+                { header: "Type", kind: "soft", cell: (a) => a.type },
+                { header: "Side", kind: "mono", cell: (a) => normalSide(a.type) },
+                { header: "Balance", kind: "num", cell: (a) => formatMinor(onNormalSide(a.type, a.balance_minor), a.currency) },
+                { header: "Currency", kind: "mono", cell: (a) => a.currency },
+              ]}
+            />
           )}
           {accounts.next_cursor ? (
             <div className="sbl-pager">
@@ -90,28 +76,16 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
             {recent.data.length === 0 ? (
               <Empty title="No transactions yet" body="Nothing has been posted to the demo ledger." />
             ) : (
-              <div className="sbl-table-wrap">
-                <table className="sbl-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Transaction</th>
-                      <th scope="col">Posted</th>
-                      <th scope="col">Description</th>
-                      <th scope="col">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recent.data.map((t) => (
-                      <tr key={t.id}>
-                        <td className="sbl-mono"><Link href={`/transactions/${t.id}`}>{shortId(t.id)}</Link></td>
-                        <td className="sbl-mono sbl-soft">{formatTime(t.posted_at)}</td>
-                        <td className="sbl-soft">{t.description ?? ""}</td>
-                        <td className="sbl-mono sbl-soft">{t.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                rows={recent.data}
+                rowKey={(t) => t.id}
+                columns={[
+                  { header: "Transaction", kind: "mono", cell: (t) => <Link href={`/transactions/${t.id}`}>{shortId(t.id)}</Link> },
+                  { header: "Posted", kind: "mono", cell: (t) => formatTime(t.posted_at) },
+                  { header: "Description", kind: "soft", cell: (t) => t.description ?? "" },
+                  { header: "Status", kind: "mono", cell: (t) => t.status },
+                ]}
+              />
             )}
           </section>
         ) : null}

@@ -25,9 +25,9 @@ export function Nav({ current }: { current?: "writeup" | "accounts" }) {
         <div className="sbl-nav-links">
           <Link className="sbl-nav-link" href="/" aria-current={current === "writeup" ? "page" : undefined}>Write-up</Link>
           <Link className="sbl-nav-link" href="/accounts" aria-current={current === "accounts" ? "page" : undefined}>Explorer</Link>
-          <a className="sbl-nav-link" href="/v1/integrity">Integrity</a>
+          <a className="sbl-nav-link sbl-hide-sm" href="/v1/integrity">Integrity</a>
         </div>
-        <a className="sbl-btn sbl-btn--solid" href={REPO}>Source <span aria-hidden="true">→</span></a>
+        <a className="sbl-btn sbl-btn--solid" href={REPO}>Source <span className="sbl-hide-sm" aria-hidden="true">→</span></a>
       </nav>
     </header>
   );

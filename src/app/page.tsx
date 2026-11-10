@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import { getLedger } from "../server/container";
 import type { Integrity } from "../ledger/types";
 import { hasEnvironmentNote, loadRuns, schemaExcerpt, type Run } from "../surface/reports";
+import { DataTable } from "../surface/data-table";
 import { Code, Empty, Figure, Footer, Frame, Nav, REPO, Section, Status } from "../surface/ui";
 
 export const dynamic = "force-dynamic";
@@ -191,22 +192,15 @@ export default async function WriteUp() {
         </Section>
 
         <Section eyebrow="API" title="Ten endpoints" lede="Base path /v1. Errors are { error: { code, message, details } }. Lists use cursor pagination.">
-          <div className="sbl-table-wrap">
-            <table className="sbl-table">
-              <thead>
-                <tr><th scope="col">Method</th><th scope="col">Path</th><th scope="col">Auth</th></tr>
-              </thead>
-              <tbody>
-                {ENDPOINTS.map(([method, path, auth]) => (
-                  <tr key={`${method} ${path}`}>
-                    <td className="sbl-mono">{method}</td>
-                    <td className="sbl-mono">{path}</td>
-                    <td className="sbl-soft">{auth === "key" ? "Bearer key" : "Public"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            rows={ENDPOINTS}
+            rowKey={([method, path]) => `${method} ${path}`}
+            columns={[
+              { header: "Method", kind: "mono", cell: ([method]) => method },
+              { header: "Path", kind: "mono", cell: ([, path]) => path },
+              { header: "Auth", kind: "soft", cell: ([, , auth]) => (auth === "key" ? "Bearer key" : "Public") },
+            ]}
+          />
         </Section>
       </main>
       <Footer />
@@ -229,28 +223,28 @@ function LoadFigures({ runs, first, where, showAchieved = false }: { runs: Run[]
     <>
       <Figure n={first} caption={`Response time of POST /v1/transactions by target rate, in milliseconds rounded to 0.01. ${where}`} source={source}>
         <div className="sbl-table-wrap">
-          <table className="sbl-table">
+          <table className="sbl-table sbl-table--tight">
             <thead>
               <tr>
-                <th scope="col">Run date</th>
+                <th scope="col" className="sbl-hide-sm">Run date</th>
                 <th scope="col" className="sbl-num">Target req/s</th>
-                <th scope="col" className="sbl-num">Min (ms)</th>
+                <th scope="col" className="sbl-num sbl-hide-sm">Min (ms)</th>
                 <th scope="col" className="sbl-num">p50 (ms)</th>
                 <th scope="col" className="sbl-num">p95 (ms)</th>
                 <th scope="col" className="sbl-num">p99 (ms)</th>
-                <th scope="col" className="sbl-num">Max (ms)</th>
+                <th scope="col" className="sbl-num sbl-hide-sm">Max (ms)</th>
               </tr>
             </thead>
             <tbody>
               {runs.map((r) => (
                 <tr key={r.path}>
-                  <td className="sbl-mono sbl-soft">{r.date}</td>
+                  <td className="sbl-mono sbl-soft sbl-hide-sm">{r.date}</td>
                   <td className="sbl-num">{r.targetRps}</td>
-                  <td className="sbl-num">{ms(r.min)}</td>
+                  <td className="sbl-num sbl-hide-sm">{ms(r.min)}</td>
                   <td className="sbl-num">{ms(r.p50)}</td>
                   <td className="sbl-num">{ms(r.p95)}</td>
                   <td className="sbl-num">{ms(r.p99)}</td>
-                  <td className="sbl-num">{ms(r.max)}</td>
+                  <td className="sbl-num sbl-hide-sm">{ms(r.max)}</td>
                 </tr>
               ))}
             </tbody>
@@ -259,13 +253,13 @@ function LoadFigures({ runs, first, where, showAchieved = false }: { runs: Run[]
       </Figure>
       <Figure n={first + 1} caption={`Requests completed, ${showAchieved ? "achieved rate, " : ""}failed requests and dropped iterations for the same runs.${showAchieved ? " Rates are rounded to 0.01." : " k6 divides by the whole test including the warm-up, so its rate is omitted; requests over 60 seconds is the measured rate."}`} source={source}>
         <div className="sbl-table-wrap">
-          <table className="sbl-table">
+          <table className="sbl-table sbl-table--tight">
             <thead>
               <tr>
-                <th scope="col">Run date</th>
+                <th scope="col" className="sbl-hide-sm">Run date</th>
                 <th scope="col" className="sbl-num">Target req/s</th>
                 <th scope="col" className="sbl-num">Requests</th>
-                {showAchieved ? <th scope="col" className="sbl-num">Achieved req/s</th> : null}
+                {showAchieved ? <th scope="col" className="sbl-num sbl-hide-sm">Achieved req/s</th> : null}
                 <th scope="col" className="sbl-num">Failed rate</th>
                 <th scope="col" className="sbl-num">Dropped</th>
               </tr>
@@ -273,10 +267,10 @@ function LoadFigures({ runs, first, where, showAchieved = false }: { runs: Run[]
             <tbody>
               {runs.map((r) => (
                 <tr key={r.path}>
-                  <td className="sbl-mono sbl-soft">{r.date}</td>
+                  <td className="sbl-mono sbl-soft sbl-hide-sm">{r.date}</td>
                   <td className="sbl-num">{r.targetRps}</td>
                   <td className="sbl-num">{int(r.requests)}</td>
-                  {showAchieved ? <td className="sbl-num">{num(r.achievedRps)}</td> : null}
+                  {showAchieved ? <td className="sbl-num sbl-hide-sm">{num(r.achievedRps)}</td> : null}
                   <td className="sbl-num">{r.errorRate === null ? "n/a" : `${round2(r.errorRate * 100)}%`}</td>
                   <td className="sbl-num">{int(r.dropped)}</td>
                 </tr>

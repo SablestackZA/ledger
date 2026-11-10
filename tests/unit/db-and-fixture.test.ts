@@ -28,6 +28,21 @@ describe("demoFixture", () => {
     expect([...perTxn.values()].every((v) => v === 0n)).toBe(true);
   });
 
+  it("leaves every account on its normal side", () => {
+    const debitNormal = new Set(["asset", "expense"]);
+    for (const a of f.accounts) {
+      const abnormal = debitNormal.has(a.type) ? a.balance_minor < 0n : a.balance_minor > 0n;
+      expect(abnormal, `${a.code} ${a.type} ${a.balance_minor}`).toBe(false);
+    }
+  });
+
+  it("uses every kind of movement and funds the assets", () => {
+    const kinds = new Set(f.transactions.map((t) => t.description));
+    expect(kinds).toEqual(new Set(["Customer receipt", "Capital contribution", "Loan drawdown", "Supplier payment", "Loan repayment", "Transfer between accounts"]));
+    const assets = f.accounts.filter((a) => a.type === "asset");
+    expect(assets.reduce((s, a) => s + a.balance_minor, 0n)).toBeGreaterThan(0n);
+  });
+
   it("is deterministic and ends at the given instant", () => {
     const again = demoFixture(now, 50, 500);
     expect(again.accounts.map((a) => a.balance_minor)).toEqual(f.accounts.map((a) => a.balance_minor));

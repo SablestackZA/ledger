@@ -4,6 +4,7 @@ import { DomainError } from "../../../ledger/errors";
 import type { Account } from "../../../ledger/types";
 import { getLedger } from "../../../server/container";
 import { formatMinor, formatTime } from "../../../surface/format";
+import { DataTable } from "../../../surface/data-table";
 import { Footer, Nav, Status } from "../../../surface/ui";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,29 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
     else t.credit += -v;
     totals.set(e.currency, t);
   }
+
+  const lines = [
+    ...txn.entries.map((e, i) => {
+      const a = accounts.get(e.account_id);
+      const v = BigInt(e.amount_minor);
+      return {
+        key: `entry-${i}`,
+        code: a?.code ?? e.account_id,
+        name: a?.name ?? "",
+        debit: v > 0n ? formatMinor(v, e.currency) : "",
+        credit: v < 0n ? formatMinor(-v, e.currency) : "",
+        currency: e.currency,
+      };
+    }),
+    ...[...totals].map(([currency, t]) => ({
+      key: `total-${currency}`,
+      code: "Total",
+      name: "",
+      debit: formatMinor(t.debit, currency),
+      credit: formatMinor(t.credit, currency),
+      currency,
+    })),
+  ];
 
   return (
     <>
@@ -66,42 +90,17 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
 
         <section className="sbl-section" style={{ paddingTop: 48 }}>
           <div className="sbl-section-head"><p className="sbl-label">Entries</p></div>
-          <div className="sbl-table-wrap">
-            <table className="sbl-table">
-              <thead>
-                <tr>
-                  <th scope="col">Account</th>
-                  <th scope="col">Name</th>
-                  <th scope="col" className="sbl-num">Debit</th>
-                  <th scope="col" className="sbl-num">Credit</th>
-                  <th scope="col">Currency</th>
-                </tr>
-              </thead>
-              <tbody>
-                {txn.entries.map((e, i) => {
-                  const a = accounts.get(e.account_id);
-                  const v = BigInt(e.amount_minor);
-                  return (
-                    <tr key={i}>
-                      <td className="sbl-mono">{a?.code ?? e.account_id}</td>
-                      <td className="sbl-soft">{a?.name ?? ""}</td>
-                      <td className="sbl-num">{v > 0n ? formatMinor(v, e.currency) : ""}</td>
-                      <td className="sbl-num">{v < 0n ? formatMinor(-v, e.currency) : ""}</td>
-                      <td className="sbl-mono sbl-soft">{e.currency}</td>
-                    </tr>
-                  );
-                })}
-                {[...totals].map(([currency, t]) => (
-                  <tr key={`total-${currency}`}>
-                    <td className="sbl-idx sbl-soft" colSpan={2}>Total</td>
-                    <td className="sbl-num">{formatMinor(t.debit, currency)}</td>
-                    <td className="sbl-num">{formatMinor(t.credit, currency)}</td>
-                    <td className="sbl-mono sbl-soft">{currency}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            rows={lines}
+            rowKey={(l) => l.key}
+            columns={[
+              { header: "Account", kind: "mono", cell: (l) => l.code },
+              { header: "Name", kind: "soft", cell: (l) => l.name },
+              { header: "Debit", kind: "num", cell: (l) => l.debit },
+              { header: "Credit", kind: "num", cell: (l) => l.credit },
+              { header: "Currency", kind: "mono", cell: (l) => l.currency },
+            ]}
+          />
         </section>
       </main>
       <Footer />
