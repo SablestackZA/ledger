@@ -1,0 +1,20 @@
+# Dev and test database only. Trust auth is bound to loopback; never reuse this for a shared host.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ledger
+      POSTGRES_DB: ledger
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - ledger-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger -d ledger"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  ledger-pgdata:
