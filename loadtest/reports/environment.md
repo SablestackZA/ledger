@@ -1,4 +1,8 @@
-# Load-test environment: local, 2026-11-10
+# Load-test environments, 2026-11-10
+
+Two environments, kept apart: **Local** (below) and **Live** (at the end). A figure is only meaningful with its environment.
+
+## Local
 
 Applies to `local-2026-11-10-250.json`, `-500.json`, `-750.json`, `-1000.json` and `-2000.json`. Every figure on the write-up page is read from those files; this file states what they were measured on.
 
@@ -69,4 +73,58 @@ docker run --rm \
   -e BASE_URL=http://host.docker.internal:3000 \
   -v "$PWD/loadtest:/loadtest" \
   grafana/k6 run --summary-export=/loadtest/reports/local-2026-11-10-<rps>.json /loadtest/post.js
+```
+
+## Live
+
+Applies to `live-2026-11-10-25.json`. Run once, by `loadtest/run-live.sh`.
+
+| | |
+|---|---|
+| Target | https://sablestack-ledger.vercel.app (Vercel deployment of `main`, commit a3cb3e4) |
+| App | Vercel Functions, Node, region `iad1`, app connected as `ledger_app` |
+| Database | Neon free tier, `us-east-1`, pooled connection (`-pooler` host, prepared statements off) |
+| Client | The laptop above (Apple M5 Pro, macOS 27.2), in South Africa, on the public internet; k6 v2.3.0 in Docker (`grafana/k6@sha256:3e4186aea62e11a45560bfc51e19eeafe82fc07ce069c78aff44b7ff893d9a5e`) |
+| Thresholds | failed rate 0, p99 under 250 ms, 0 dropped iterations (the p99 value was chosen before the run) |
+| Procedure | Setup: 200 accounts created through `POST /v1/accounts` (codes `lt-2026-11-10-live-25-NNNN`). Warm-up: 30 s at 10 req/s, tagged `endpoint:warmup` and excluded from every figure. Measurement: 60 s constant arrival rate. Rates were to rise from 25 until a run crossed a threshold. |
+
+### Client network, measured before the run
+
+20 requests to `GET /v1/health` with curl, plus 10 ICMP pings, to `sablestack-ledger.vercel.app` (anycast address, so these reach the nearest Vercel edge, not `iad1`):
+
+| Measure | Median | Min | Max |
+|---|---|---|---|
+| ICMP round trip (ping, average of 10) | 9.862 ms | 5.694 ms | 15.398 ms |
+| TCP connect (curl `time_connect`) | 10.8 ms | 7.5 ms | 23.3 ms |
+| TCP + TLS done (curl `time_appconnect`) | 90.2 ms | 75.6 ms | 203.3 ms |
+| First byte of `/v1/health`, new connection (curl `time_starttransfer`) | 397.6 ms | 372.8 ms | 502.7 ms |
+
+The TCP and ICMP figures are to the edge. The distance to `iad1` shows up in the application timings, not here.
+
+### Outcome
+
+| Target req/s | Result |
+|---|---|
+| 25 | p99 threshold crossed (393.76 ms against 250 ms); 0 failed requests, 0 dropped iterations |
+
+- The run stopped there, as the procedure says, so 50, 100 and 200 req/s were not run. No rate met the threshold.
+- k6 reported a minimum request time of 281.61 ms for the measured requests, above the 250 ms p99 threshold. With 0 failures and 0 drops, the threshold looks unattainable from this client to `iad1`, regardless of load. That is an inference from the minimum; the split between network and application time was not measured.
+- `http_reqs` `rate` in the exported JSON is the request count divided by the whole test, including the 30-second warm-up (about 104 s in all), so it is 14.46 for 1,501 requests. It is not the rate during the 60-second window and is left out of the write-up for live runs.
+
+### Integrity after the run
+
+`GET /v1/integrity` on the live deployment, called by the k6 teardown and again by hand afterwards, returned `ok: true`, 0 unbalanced transactions, 0 transactions under two entries and 0 drifted accounts, with 250 accounts, 2,302 transactions and 4,604 entries (50 demo and 200 load-test accounts; 500 demo transactions plus 1,802 from the run, of which 1,501 were measured, so 301 were warm-up).
+
+### Commands
+
+```sh
+LEDGER_API_KEY=<write key> REPORT_DATE=2026-11-10 loadtest/run-live.sh 25 50 100 200
+```
+
+`run-live.sh` runs, per rate:
+
+```sh
+docker run --rm -e LEDGER_API_KEY -e MODE=live -e RATE=<rps> -e BASE_URL=https://sablestack-ledger.vercel.app \
+  -e RUN_ID=2026-11-10-live-<rps> -e P99_MS=250 -v "$PWD/loadtest:/loadtest" \
+  grafana/k6 run --summary-export=/loadtest/reports/live-2026-11-10-<rps>.json /loadtest/post.js
 ```

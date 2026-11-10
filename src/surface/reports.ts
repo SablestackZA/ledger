@@ -7,6 +7,7 @@ const reportsDir = join(root, "loadtest", "reports");
 
 interface TrendStats {
   avg?: number;
+  min?: number;
   med?: number;
   max?: number;
   "p(95)"?: number;
@@ -20,6 +21,7 @@ interface K6Summary {
     "http_req_failed{endpoint:post_transactions}"?: { value?: number };
     "http_reqs{endpoint:post_transactions}"?: { count?: number; rate?: number };
     dropped_iterations?: { count?: number };
+    "dropped_iterations{scenario:measure}"?: { count?: number };
   };
 }
 
@@ -28,6 +30,7 @@ export interface Run {
   date: string;
   targetRps: number;
   path: string;
+  min: number | null;
   p50: number | null;
   p95: number | null;
   p99: number | null;
@@ -53,6 +56,7 @@ export function loadRuns(env: "local" | "live"): Run[] {
       date: m[1]!,
       targetRps: Number(m[2]),
       path: `loadtest/reports/${file}`,
+      min: d?.min ?? null,
       p50: d?.med ?? null,
       p95: d?.["p(95)"] ?? null,
       p99: d?.["p(99)"] ?? null,
@@ -60,7 +64,7 @@ export function loadRuns(env: "local" | "live"): Run[] {
       errorRate: summary.metrics["http_req_failed{endpoint:post_transactions}"]?.value ?? null,
       requests: summary.metrics["http_reqs{endpoint:post_transactions}"]?.count ?? null,
       achievedRps: summary.metrics["http_reqs{endpoint:post_transactions}"]?.rate ?? null,
-      dropped: summary.metrics.dropped_iterations?.count ?? 0,
+      dropped: (summary.metrics["dropped_iterations{scenario:measure}"] ?? summary.metrics.dropped_iterations)?.count ?? 0,
     });
   }
   return runs.sort((a, b) => a.targetRps - b.targetRps);

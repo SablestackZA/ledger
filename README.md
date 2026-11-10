@@ -77,6 +77,16 @@ loadtest/run.sh 500        # writes loadtest/reports/local-<date>-500.json
 
 The thresholds in the script are zero failed requests, zero dropped iterations and p99 under 100 ms. Reports and the environment they were taken in are in [`loadtest/reports/`](loadtest/reports); the write-up page at `/` reads its figures from those JSON files.
 
+### Against the deployment
+
+`loadtest/run-live.sh` runs the same script against a deployed ledger and needs only the write key. Each run creates 200 accounts through `POST /v1/accounts`, warms up for 30 seconds at 10 requests per second (excluded from the figures), then measures 60 seconds at each rate you pass, and stops at the first rate that crosses a threshold. The default p99 threshold is 250 ms (`P99_MS`); it counts the network path from the client.
+
+```sh
+LEDGER_API_KEY=<write key> loadtest/run-live.sh 25 50 100 200   # writes loadtest/reports/live-<date>-<rps>.json
+```
+
+The test accounts and transactions stay in the demo ledger until the nightly reset.
+
 A local run measures this code on one machine. It does not predict a hosted deployment, and the report says which environment it was taken in.
 
 ## Deploy

@@ -59,7 +59,8 @@ const ENDPOINTS: [string, string, string][] = [
 
 export default async function WriteUp() {
   const integrity = await readIntegrity();
-  const runs = loadRuns("local");
+  const localRuns = loadRuns("local");
+  const liveRuns = loadRuns("live");
   const schema = schemaExcerpt();
 
   return (
@@ -140,22 +141,45 @@ export default async function WriteUp() {
         </Section>
 
         <Section
-          eyebrow="Load test"
+          eyebrow="Load test, local"
           title="Posting under constant arrival rate"
           lede="k6 posts transfers between 1,000 seeded accounts at a fixed rate for 60 seconds per run. The environment is stated with every figure."
         >
-          {runs.length === 0 ? (
+          {localRuns.length === 0 ? (
             <Empty title="No reports published yet" body="The report files are committed under loadtest/reports. None were found in this build." action={{ href: `${REPO}/tree/main/loadtest`, label: "Open loadtest" }} />
           ) : (
-            <LoadFigures runs={runs} />
+            <LoadFigures runs={localRuns} first={3} where="Local runs." showAchieved />
           )}
           <div className="sbl-prose">
             <p>
-              These runs are local: the app, Postgres 17 in Docker and the k6 container shared one laptop. They show how the code behaves on that machine, not what a hosted deployment will do. A second report against the Vercel deployment, with its Neon tier named, has not been run.
+              These runs are local: the app, Postgres 17 in Docker and the k6 container shared one laptop. They show how the code behaves on that machine, not what a hosted deployment will do. The p99 threshold for these runs is 100 ms.
             </p>
             {hasEnvironmentNote() ? (
               <p>
                 Machine, versions, pool size and exact commands:{" "}
+                <a className="sbl-underline sbl-mono" href={`${REPO}/blob/main/loadtest/reports/environment.md`}>loadtest/reports/environment.md</a>.
+              </p>
+            ) : null}
+          </div>
+        </Section>
+
+        <Section
+          eyebrow="Load test, live"
+          title="Posting to the deployment"
+          lede="The same script against the Vercel deployment and Neon, run from a laptop in South Africa over the public internet. Each run follows a 30-second warm-up at 10 requests per second, which is excluded, with 60 seconds at the stated rate."
+        >
+          {liveRuns.length === 0 ? (
+            <Empty title="No live report published yet" body="The live report files are committed under loadtest/reports as live-<date>-<rps>.json." action={{ href: `${REPO}/tree/main/loadtest`, label: "Open loadtest" }} />
+          ) : (
+            <LoadFigures runs={liveRuns} first={5} where="Live runs against the Vercel deployment (iad1) and Neon (us-east-1, pooled, free tier)." />
+          )}
+          <div className="sbl-prose">
+            <p>
+              Latency here includes the network path from the client to Vercel and back, so it is not comparable with the local figures. The p99 threshold for live runs is 250 ms. Rates were raised until a run crossed a threshold, and the next rate was not tried. Each run created its own 200 accounts through the API.
+            </p>
+            {hasEnvironmentNote() ? (
+              <p>
+                Region, tiers, client network measurements and the integrity result after the runs:{" "}
                 <a className="sbl-underline sbl-mono" href={`${REPO}/blob/main/loadtest/reports/environment.md`}>loadtest/reports/environment.md</a>.
               </p>
             ) : null}
@@ -199,17 +223,18 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LoadFigures({ runs }: { runs: Run[] }) {
+function LoadFigures({ runs, first, where, showAchieved = false }: { runs: Run[]; first: number; where: string; showAchieved?: boolean }) {
   const source = runs.map((r) => ({ label: r.path.replace("loadtest/reports/", ""), path: r.path }));
   return (
     <>
-      <Figure n={3} caption="Response time of POST /v1/transactions by target rate, in milliseconds rounded to 0.01. Local runs." source={source}>
+      <Figure n={first} caption={`Response time of POST /v1/transactions by target rate, in milliseconds rounded to 0.01. ${where}`} source={source}>
         <div className="sbl-table-wrap">
           <table className="sbl-table">
             <thead>
               <tr>
                 <th scope="col">Run date</th>
                 <th scope="col" className="sbl-num">Target req/s</th>
+                <th scope="col" className="sbl-num">Min (ms)</th>
                 <th scope="col" className="sbl-num">p50 (ms)</th>
                 <th scope="col" className="sbl-num">p95 (ms)</th>
                 <th scope="col" className="sbl-num">p99 (ms)</th>
@@ -221,6 +246,7 @@ function LoadFigures({ runs }: { runs: Run[] }) {
                 <tr key={r.path}>
                   <td className="sbl-mono sbl-soft">{r.date}</td>
                   <td className="sbl-num">{r.targetRps}</td>
+                  <td className="sbl-num">{ms(r.min)}</td>
                   <td className="sbl-num">{ms(r.p50)}</td>
                   <td className="sbl-num">{ms(r.p95)}</td>
                   <td className="sbl-num">{ms(r.p99)}</td>
@@ -231,7 +257,7 @@ function LoadFigures({ runs }: { runs: Run[] }) {
           </table>
         </div>
       </Figure>
-      <Figure n={4} caption="Requests completed, achieved rate, failed requests and dropped iterations for the same runs. Rates are rounded to 0.01." source={source}>
+      <Figure n={first + 1} caption={`Requests completed, ${showAchieved ? "achieved rate, " : ""}failed requests and dropped iterations for the same runs.${showAchieved ? " Rates are rounded to 0.01." : " k6 divides by the whole test including the warm-up, so its rate is omitted; requests over 60 seconds is the measured rate."}`} source={source}>
         <div className="sbl-table-wrap">
           <table className="sbl-table">
             <thead>
@@ -239,7 +265,7 @@ function LoadFigures({ runs }: { runs: Run[] }) {
                 <th scope="col">Run date</th>
                 <th scope="col" className="sbl-num">Target req/s</th>
                 <th scope="col" className="sbl-num">Requests</th>
-                <th scope="col" className="sbl-num">Achieved req/s</th>
+                {showAchieved ? <th scope="col" className="sbl-num">Achieved req/s</th> : null}
                 <th scope="col" className="sbl-num">Failed rate</th>
                 <th scope="col" className="sbl-num">Dropped</th>
               </tr>
@@ -250,7 +276,7 @@ function LoadFigures({ runs }: { runs: Run[] }) {
                   <td className="sbl-mono sbl-soft">{r.date}</td>
                   <td className="sbl-num">{r.targetRps}</td>
                   <td className="sbl-num">{int(r.requests)}</td>
-                  <td className="sbl-num">{num(r.achievedRps)}</td>
+                  {showAchieved ? <td className="sbl-num">{num(r.achievedRps)}</td> : null}
                   <td className="sbl-num">{r.errorRate === null ? "n/a" : `${round2(r.errorRate * 100)}%`}</td>
                   <td className="sbl-num">{int(r.dropped)}</td>
                 </tr>
