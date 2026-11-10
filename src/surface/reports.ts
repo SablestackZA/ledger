@@ -20,9 +20,17 @@ interface K6Summary {
     "http_req_duration{endpoint:post_transactions}"?: TrendStats;
     "http_req_failed{endpoint:post_transactions}"?: { value?: number };
     "http_reqs{endpoint:post_transactions}"?: { count?: number; rate?: number };
+    server_app?: TrendStats;
+    server_db?: TrendStats;
     dropped_iterations?: { count?: number };
     "dropped_iterations{scenario:measure}"?: { count?: number };
   };
+}
+
+export interface ServerStats {
+  p50: number;
+  p95: number;
+  p99: number;
 }
 
 export interface Run {
@@ -40,7 +48,13 @@ export interface Run {
   achievedRps: number | null;
   // k6 only emits this metric when an iteration was dropped, so absence means none.
   dropped: number;
+  // From the Server-Timing header; only live runs record it.
+  serverApp: ServerStats | null;
+  serverDb: ServerStats | null;
 }
+
+const serverStats = (t: TrendStats | undefined): ServerStats | null =>
+  t?.med === undefined || t["p(95)"] === undefined || t["p(99)"] === undefined ? null : { p50: t.med, p95: t["p(95)"], p99: t["p(99)"] };
 
 export function loadRuns(env: "local" | "live"): Run[] {
   if (!existsSync(reportsDir)) return [];
@@ -65,6 +79,8 @@ export function loadRuns(env: "local" | "live"): Run[] {
       requests: summary.metrics["http_reqs{endpoint:post_transactions}"]?.count ?? null,
       achievedRps: summary.metrics["http_reqs{endpoint:post_transactions}"]?.rate ?? null,
       dropped: (summary.metrics["dropped_iterations{scenario:measure}"] ?? summary.metrics.dropped_iterations)?.count ?? 0,
+      serverApp: serverStats(summary.metrics.server_app),
+      serverDb: serverStats(summary.metrics.server_db),
     });
   }
   return runs.sort((a, b) => a.targetRps - b.targetRps);

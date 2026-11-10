@@ -7,8 +7,9 @@ export const GET = route({}, async ({ req }) => ({ status: 200, body: await getL
 export const POST = route({ auth: true }, async ({ req }) => {
   const key = idempotencyKey(req);
   const input = postTransactionSchema.parse(await readJson(req));
-  const { value, replayed } = await getLedger().postTransaction(input, key);
+  const { value, replayed, dbMs } = await getLedger().postTransaction(input, key);
+  const timing = { db: dbMs };
   return replayed
-    ? { status: 200, body: value, headers: { "idempotent-replayed": "true" } }
-    : { status: 201, body: value };
+    ? { status: 200, body: value, headers: { "idempotent-replayed": "true" }, timing }
+    : { status: 201, body: value, timing };
 });

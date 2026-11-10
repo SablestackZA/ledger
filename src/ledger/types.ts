@@ -75,4 +75,6 @@ export interface Integrity {
 export interface Written<T> {
   value: T;
   replayed: boolean;
+  // Duration of the posting database transaction, when the write ran one.
+  dbMs?: number;
 }

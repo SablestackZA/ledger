@@ -196,6 +196,31 @@ describe("GET /v1/transactions cursor validation", () => {
   });
 });
 
+describe("Server-Timing", () => {
+  const parse = (h: string | null) => Object.fromEntries((h ?? "").split(", ").map((p) => [p.split(";")[0], Number(p.split("dur=")[1])]));
+
+  it("reports db and app milliseconds on a posting, with db inside app", async () => {
+    const a = await openAccount("a");
+    const b = await openAccount("b");
+    const res = await transfer(a.id, b.id, 100, "k1");
+    expect(res.headers.get("server-timing")).toMatch(/^db;dur=\d+(\.\d+)?, app;dur=\d+(\.\d+)?$/);
+    const t = parse(res.headers.get("server-timing"));
+    expect(t.db).toBeGreaterThan(0);
+    expect(t.app).toBeGreaterThanOrEqual(t.db!);
+  });
+
+  it("includes db on a replay and only app on a rejected request", async () => {
+    const a = await openAccount("a");
+    const b = await openAccount("b");
+    await transfer(a.id, b.id, 100, "k1");
+    const replay = await transfer(a.id, b.id, 100, "k1");
+    expect(parse(replay.headers.get("server-timing")).db).toBeGreaterThan(0);
+    const bad = await post({ auth: true, key: "k2", body: { entries: [] } });
+    expect(bad.status).toBe(422);
+    expect(bad.headers.get("server-timing")).toMatch(/^app;dur=\d+(\.\d+)?$/);
+  });
+});
+
 describe("posting log lines", () => {
   it("carry the request id of the request that caused them", async () => {
     const a = await openAccount("a");

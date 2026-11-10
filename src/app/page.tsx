@@ -172,11 +172,14 @@ export default async function WriteUp() {
           {liveRuns.length === 0 ? (
             <Empty title="No live report published yet" body="The live report files are committed under loadtest/reports as live-<date>-<rps>.json." action={{ href: `${REPO}/tree/main/loadtest`, label: "Open loadtest" }} />
           ) : (
-            <LoadFigures runs={liveRuns} first={5} where="Live runs against the Vercel deployment (iad1) and Neon (us-east-1, pooled, free tier)." />
+            <LiveFigures runs={liveRuns} first={5} />
           )}
           <div className="sbl-prose">
             <p>
-              Latency here includes the network path from the client to Vercel and back, so it is not comparable with the local figures. The p99 threshold for live runs is 250 ms. Rates were raised until a run crossed a threshold, and the next rate was not tried. Each run created its own 200 accounts through the API.
+              Fig. {5} is the server&apos;s own measurement. The app times each POST with performance.now() and returns it in the Server-Timing header: db is the posting database transaction, app is the whole handler. It leaves out what happens before the handler starts, such as a function cold start and platform routing.
+            </p>
+            <p>
+              Fig. {6} is what the client saw. It includes the network round trip from the test machine in South Africa to the Vercel region in Virginia (iad1), so it measures that distance as much as the ledger, and no threshold applies to it. The live thresholds are zero failed requests, zero dropped iterations and a server-side p99 under 100 ms. Rates were raised until a run crossed a threshold, and the next rate was not tried. Each run created its own 200 accounts through the API.
             </p>
             {hasEnvironmentNote() ? (
               <p>
@@ -271,6 +274,115 @@ function LoadFigures({ runs, first, where, showAchieved = false }: { runs: Run[]
                   <td className="sbl-num">{r.targetRps}</td>
                   <td className="sbl-num">{int(r.requests)}</td>
                   {showAchieved ? <td className="sbl-num sbl-hide-sm">{num(r.achievedRps)}</td> : null}
+                  <td className="sbl-num">{r.errorRate === null ? "n/a" : `${round2(r.errorRate * 100)}%`}</td>
+                  <td className="sbl-num">{int(r.dropped)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Figure>
+    </>
+  );
+}
+
+function LiveFigures({ runs, first }: { runs: Run[]; first: number }) {
+  const source = runs.map((r) => ({ label: r.path.replace("loadtest/reports/", ""), path: r.path }));
+  const dash = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : round2(v));
+  return (
+    <>
+      <Figure
+        n={first}
+        caption="Server-side time of POST /v1/transactions from the Server-Timing header, in milliseconds rounded to 0.01. app is the whole handler, db is the posting transaction. Live runs against the Vercel deployment (iad1) and Neon (us-east-1, pooled, free tier)."
+        source={source}
+      >
+        <div className="sbl-table-wrap">
+          <table className="sbl-table sbl-table--tight">
+            <thead>
+              <tr>
+                <th scope="col" className="sbl-hide-sm">Run date</th>
+                <th scope="col" className="sbl-num">Target req/s</th>
+                <th scope="col" className="sbl-num">app p50</th>
+                <th scope="col" className="sbl-num">app p95</th>
+                <th scope="col" className="sbl-num">app p99</th>
+                <th scope="col" className="sbl-num sbl-hide-sm">db p50</th>
+                <th scope="col" className="sbl-num sbl-hide-sm">db p95</th>
+                <th scope="col" className="sbl-num">db p99</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.path}>
+                  <td className="sbl-mono sbl-soft sbl-hide-sm">{r.date}</td>
+                  <td className="sbl-num">{r.targetRps}</td>
+                  <td className="sbl-num">{dash(r.serverApp?.p50)}</td>
+                  <td className="sbl-num">{dash(r.serverApp?.p95)}</td>
+                  <td className="sbl-num">{dash(r.serverApp?.p99)}</td>
+                  <td className="sbl-num sbl-hide-sm">{dash(r.serverDb?.p50)}</td>
+                  <td className="sbl-num sbl-hide-sm">{dash(r.serverDb?.p95)}</td>
+                  <td className="sbl-num">{dash(r.serverDb?.p99)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Figure>
+      <Figure
+        n={first + 1}
+        caption="Client-observed response time of the same requests, in milliseconds rounded to 0.01. It includes the network round trip from the test machine in South Africa to iad1. Not a threshold."
+        source={source}
+      >
+        <div className="sbl-table-wrap">
+          <table className="sbl-table sbl-table--tight">
+            <thead>
+              <tr>
+                <th scope="col" className="sbl-hide-sm">Run date</th>
+                <th scope="col" className="sbl-num">Target req/s</th>
+                <th scope="col" className="sbl-num sbl-hide-sm">Min (ms)</th>
+                <th scope="col" className="sbl-num">p50 (ms)</th>
+                <th scope="col" className="sbl-num">p95 (ms)</th>
+                <th scope="col" className="sbl-num">p99 (ms)</th>
+                <th scope="col" className="sbl-num sbl-hide-sm">Max (ms)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.path}>
+                  <td className="sbl-mono sbl-soft sbl-hide-sm">{r.date}</td>
+                  <td className="sbl-num">{r.targetRps}</td>
+                  <td className="sbl-num sbl-hide-sm">{ms(r.min)}</td>
+                  <td className="sbl-num">{ms(r.p50)}</td>
+                  <td className="sbl-num">{ms(r.p95)}</td>
+                  <td className="sbl-num">{ms(r.p99)}</td>
+                  <td className="sbl-num sbl-hide-sm">{ms(r.max)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Figure>
+      <Figure
+        n={first + 2}
+        caption="Requests completed, failed requests and dropped iterations for the same runs. k6 divides by the whole test including the warm-up, so its rate is omitted; requests over 60 seconds is the measured rate."
+        source={source}
+      >
+        <div className="sbl-table-wrap">
+          <table className="sbl-table sbl-table--tight">
+            <thead>
+              <tr>
+                <th scope="col" className="sbl-hide-sm">Run date</th>
+                <th scope="col" className="sbl-num">Target req/s</th>
+                <th scope="col" className="sbl-num">Requests</th>
+                <th scope="col" className="sbl-num">Failed rate</th>
+                <th scope="col" className="sbl-num">Dropped</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.path}>
+                  <td className="sbl-mono sbl-soft sbl-hide-sm">{r.date}</td>
+                  <td className="sbl-num">{r.targetRps}</td>
+                  <td className="sbl-num">{int(r.requests)}</td>
                   <td className="sbl-num">{r.errorRate === null ? "n/a" : `${round2(r.errorRate * 100)}%`}</td>
                   <td className="sbl-num">{int(r.dropped)}</td>
                 </tr>

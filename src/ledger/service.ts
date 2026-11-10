@@ -114,8 +114,9 @@ export class LedgerService {
       const out = await retryOnDeadlock(() =>
         this.db.withTransaction((tx) => this.postIn(tx, prepared, idempotencyKey, null)),
       );
-      this.log("posting", { outcome: out.replayed ? "replayed" : "posted", duration_ms: since(started) });
-      return out;
+      const dbMs = since(started);
+      this.log("posting", { outcome: out.replayed ? "replayed" : "posted", duration_ms: dbMs });
+      return { ...out, dbMs };
     } catch (err) {
       this.log("posting", { outcome: "failed", code: errorCode(err), duration_ms: since(started) });
       throw err;

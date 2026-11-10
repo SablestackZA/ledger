@@ -2,18 +2,25 @@
 // run-live.sh sets MODE=live, where setup() creates its own accounts through the API.
 import http from "k6/http";
 import { check, fail } from "k6";
+import { Counter, Trend } from "k6/metrics";
 
 const LIVE = __ENV.MODE === "live";
 const BASE = __ENV.BASE_URL || "http://localhost:3000";
 const KEY = __ENV.LEDGER_API_KEY;
 const RATE = Number(__ENV.RATE || 250);
 const DURATION = __ENV.DURATION || "60s";
-const P99_MS = Number(__ENV.P99_MS || (LIVE ? 250 : 100));
+const P99_MS = Number(__ENV.P99_MS || 100);
 const ACCOUNTS = Number(__ENV.ACCOUNTS || 200);
 const WARMUP = __ENV.WARMUP || "30s";
 const WARMUP_RATE = Number(__ENV.WARMUP_RATE || 10);
 // Keeps idempotency keys and account codes unique across runs against the same database.
 const RUN = __ENV.RUN_ID || String(Date.now());
+
+// Server-side time from the Server-Timing header (db: posting transaction, app: whole handler), measured scenario only.
+const serverDb = new Trend("server_db", true);
+const serverApp = new Trend("server_app", true);
+// An empty trend passes any threshold, so a response without the header must fail the run instead.
+const missingTiming = new Counter("server_timing_missing");
 
 const measureScenario = {
   executor: "constant-arrival-rate",
@@ -36,7 +43,10 @@ export const options = {
   // Thresholds on POST-only sub-metrics keep setup, warm-up and teardown out; --summary-export carries them.
   thresholds: {
     "http_req_failed{endpoint:post_transactions}": ["rate==0"],
-    "http_req_duration{endpoint:post_transactions}": [`p(99)<${P99_MS}`],
+    // Live: client latency includes the network path from the test machine, so it is exported but
+    // not judged (max>=0 always holds; k6 only exports a sub-metric that has a threshold). The server-side p99 is.
+    "http_req_duration{endpoint:post_transactions}": [LIVE ? "max>=0" : `p(99)<${P99_MS}`],
+    ...(LIVE ? { server_app: [`p(99)<${P99_MS}`], server_db: ["max>=0"], server_timing_missing: ["count==0"] } : {}),
     "http_reqs{endpoint:post_transactions}": ["count>0"],
     // A rate the machine could not sustain shows up as dropped iterations, not as latency.
     [LIVE ? "dropped_iterations{scenario:measure}" : "dropped_iterations"]: ["count==0"],
@@ -108,6 +118,19 @@ function transfer(data, endpoint) {
     { headers: writeHeaders(`${RUN}-${__VU}-${__ITER}`), tags: { endpoint } },
   );
   check(res, { "status is 201": (r) => r.status === 201 });
+  if (endpoint === "post_transactions") recordServerTiming(res);
+}
+
+function recordServerTiming(res) {
+  const header = res.headers["Server-Timing"];
+  if (!header) {
+    missingTiming.add(1);
+    return;
+  }
+  for (const part of header.split(",")) {
+    const m = /^\s*(db|app);dur=([\d.]+)/.exec(part);
+    if (m) (m[1] === "db" ? serverDb : serverApp).add(Number(m[2]));
+  }
 }
 
 export function measure(data) {

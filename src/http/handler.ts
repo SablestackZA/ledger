@@ -10,6 +10,8 @@ export interface Reply {
   status: number;
   body: unknown;
   headers?: Record<string, string>;
+  // Milliseconds for the Server-Timing header; the handler adds app (its own total).
+  timing?: { db?: number };
 }
 
 export interface RouteContext<P> {
@@ -58,9 +60,15 @@ export function route<P = Record<string, never>>(opts: Options, fn: (ctx: RouteC
       ...(key ? { idempotency_key_hash: createHash("sha256").update(key).digest("hex").slice(0, 8) } : {}),
     });
 
+    // Handler time, not wire time.
+    const timing = [
+      ...(reply.timing?.db === undefined ? [] : [`db;dur=${reply.timing.db}`]),
+      `app;dur=${Math.round((performance.now() - started) * 100) / 100}`,
+    ].join(", ");
+
     return Response.json(reply.body, {
       status: reply.status,
-      headers: { ...reply.headers, "x-request-id": requestId },
+      headers: { ...reply.headers, "server-timing": timing, "x-request-id": requestId },
     });
   };
 }
